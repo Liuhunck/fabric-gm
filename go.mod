@@ -49,6 +49,8 @@ require (
 	gopkg.in/yaml.v2 v2.4.0
 )
 
+require github.com/tjfoc/gmsm v1.3.1
+
 require (
 	github.com/AdaLogics/go-fuzz-headers v0.0.0-20210715213245-6c3934b029d8 // indirect
 	github.com/Azure/go-ansiterm v0.0.0-20210617225240-d185dfc1b5a1 // indirect

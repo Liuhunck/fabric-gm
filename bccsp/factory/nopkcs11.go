@@ -51,9 +51,18 @@ func initFactories(config *FactoryOpts) error {
 		config.SW = GetDefaultOpts().SW
 	}
 
+	if config.Default != "SW" && config.Default != "GM" {
+		return errors.Errorf("Could not find default `%s` BCCSP", config.Default)
+	}
+
 	// Software-Based BCCSP
-	if config.Default == "SW" && config.SW != nil {
-		f := &SWFactory{}
+	if config.SW != nil {
+		var f BCCSPFactory
+		if config.Default == "SW" {
+			f = &SWFactory{}
+		} else {
+			f = &GMFactory{}
+		}
 		var err error
 		defaultBCCSP, err = initBCCSP(f, config)
 		if err != nil {
@@ -74,6 +83,8 @@ func GetBCCSPFromOpts(config *FactoryOpts) (bccsp.BCCSP, error) {
 	switch config.Default {
 	case "SW":
 		f = &SWFactory{}
+	case "GM":
+		f = &GMFactory{}
 	default:
 		return nil, errors.Errorf("Could not find BCCSP, no '%s' provider", config.Default)
 	}

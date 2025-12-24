@@ -59,6 +59,13 @@ const (
 
 	// X509Certificate Label for X509 certificate related operation
 	X509Certificate = "X509Certificate"
+
+	// GMSM2
+	GMSM2 = "GMSM2"
+	// GMSM3
+	GMSM3 = "GMSM3"
+	// GMSM4
+	GMSM4 = "GMSM4"
 )
 
 // ECDSAKeyGenOpts contains options for ECDSA key generation.
