@@ -17,12 +17,13 @@ limitations under the License.
 package msp
 
 import (
-	"crypto/x509"
 	"encoding/asn1"
 	"encoding/pem"
 	"math/big"
 	"path/filepath"
 	"testing"
+
+	x509 "github.com/tjfoc/gmsm/x509"
 
 	"github.com/golang/protobuf/proto"
 	"github.com/hyperledger/fabric-protos-go/msp"

@@ -59,7 +59,61 @@ const (
 
 	// X509Certificate Label for X509 certificate related operation
 	X509Certificate = "X509Certificate"
+
+	// SM2 Chinese National Cryptographic Algorithm (key gen, import, sign, verify)
+	SM2 = "SM2"
+
+	// SM3 Chinese National Hash Algorithm
+	SM3 = "SM3"
 )
+
+// SM2KeyGenOpts contains options for SM2 key generation.
+type SM2KeyGenOpts struct {
+	Temporary bool
+}
+
+// Algorithm returns the key generation algorithm identifier (to be used).
+func (opts *SM2KeyGenOpts) Algorithm() string {
+	return SM2
+}
+
+// Ephemeral returns true if the key to generate has to be ephemeral,
+// false otherwise.
+func (opts *SM2KeyGenOpts) Ephemeral() bool {
+	return opts.Temporary
+}
+
+// SM2PKIXPublicKeyImportOpts contains options for SM2 public key importation in PKIX format.
+type SM2PKIXPublicKeyImportOpts struct {
+	Temporary bool
+}
+
+// Algorithm returns the key importation algorithm identifier (to be used).
+func (opts *SM2PKIXPublicKeyImportOpts) Algorithm() string {
+	return SM2
+}
+
+// Ephemeral returns true if the key to generate has to be ephemeral,
+// false otherwise.
+func (opts *SM2PKIXPublicKeyImportOpts) Ephemeral() bool {
+	return opts.Temporary
+}
+
+// SM2PrivateKeyImportOpts contains options for SM2 secret key importation in DER/PKCS#8 format.
+type SM2PrivateKeyImportOpts struct {
+	Temporary bool
+}
+
+// Algorithm returns the key importation algorithm identifier (to be used).
+func (opts *SM2PrivateKeyImportOpts) Algorithm() string {
+	return SM2
+}
+
+// Ephemeral returns true if the key to generate has to be ephemeral,
+// false otherwise.
+func (opts *SM2PrivateKeyImportOpts) Ephemeral() bool {
+	return opts.Temporary
+}
 
 // ECDSAKeyGenOpts contains options for ECDSA key generation.
 type ECDSAKeyGenOpts struct {

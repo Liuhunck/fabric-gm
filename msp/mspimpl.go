@@ -8,13 +8,14 @@ package msp
 
 import (
 	"bytes"
-	"crypto/x509"
 	"crypto/x509/pkix"
 	"encoding/asn1"
 	"encoding/hex"
 	"encoding/pem"
 	"fmt"
 	"strings"
+
+	x509 "github.com/tjfoc/gmsm/x509"
 
 	"github.com/golang/protobuf/proto"
 	m "github.com/hyperledger/fabric-protos-go/msp"
@@ -745,13 +746,32 @@ var (
 	oidExtensionNameConstraints = asn1.ObjectIdentifier{2, 5, 29, 30}
 )
 
+type certificateInvalidReason int
+
+const (
+	nameConstraintsWithoutSANs certificateInvalidReason = iota + 1
+)
+
+type certificateInvalidError struct {
+	Cert   *x509.Certificate
+	Reason certificateInvalidReason
+}
+
+func (e certificateInvalidError) Error() string {
+	switch e.Reason {
+	case nameConstraintsWithoutSANs:
+		return "x509: invalid leaf certificate: name constraints without SANs"
+	default:
+		return "x509: invalid certificate"
+	}
+}
+
 // verifyLegacyNameConstraints exercises the name constraint validation rules
 // that were part of the certificate verification process in Go 1.14.
 //
-// If a signing certificate contains a name constratint, the leaf certificate
+// If a signing certificate contains a name constraint, the leaf certificate
 // does not include SAN extensions, and the leaf's common name looks like a
-// host name, the validation would fail with an x509.CertificateInvalidError
-// and a rason of x509.NameConstraintsWithoutSANs.
+// host name, the validation would fail in Go 1.14.
 func verifyLegacyNameConstraints(chain []*x509.Certificate) error {
 	if len(chain) < 2 {
 		return nil
@@ -769,7 +789,7 @@ func verifyLegacyNameConstraints(chain []*x509.Certificate) error {
 	// would fail in Go 1.14.
 	for _, c := range chain[1:] {
 		if oidInExtensions(oidExtensionNameConstraints, c.Extensions) {
-			return x509.CertificateInvalidError{Cert: chain[0], Reason: x509.NameConstraintsWithoutSANs}
+			return certificateInvalidError{Cert: chain[0], Reason: nameConstraintsWithoutSANs}
 		}
 	}
 	return nil

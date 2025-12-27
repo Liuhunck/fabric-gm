@@ -12,7 +12,7 @@ import (
 	"crypto/elliptic"
 	"crypto/rand"
 	"crypto/sha256"
-	"crypto/x509"
+	stdx509 "crypto/x509"
 	"crypto/x509/pkix"
 	"encoding/asn1"
 	"encoding/hex"
@@ -35,6 +35,7 @@ import (
 	"github.com/hyperledger/fabric/core/config/configtest"
 	"github.com/hyperledger/fabric/protoutil"
 	"github.com/stretchr/testify/require"
+	x509 "github.com/tjfoc/gmsm/x509"
 )
 
 var notACert = `-----BEGIN X509 CRL-----
@@ -76,20 +77,52 @@ func TestGetSigningIdentityFromConfWithWrongPrivateCert(t *testing.T) {
 		// Restore original root certs
 		localMsp.(*bccspmsp).opts.Roots = oldRoots
 	}()
-	_, cert := generateSelfSignedCert(t, time.Now())
+
+	caKey, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	require.NoError(t, err)
+	caTemplate := stdx509.Certificate{
+		SerialNumber:          big.NewInt(1),
+		Subject:               pkix.Name{CommonName: "TestCA"},
+		NotBefore:             time.Now().Add(-1 * time.Hour),
+		NotAfter:              time.Now().Add(2 * time.Hour),
+		KeyUsage:              stdx509.KeyUsageCertSign | stdx509.KeyUsageCRLSign,
+		BasicConstraintsValid: true,
+		IsCA:                  true,
+	}
+	caCertBytes, err := stdx509.CreateCertificate(rand.Reader, &caTemplate, &caTemplate, caKey.Public(), caKey)
+	require.NoError(t, err)
+	caCert, err := x509.ParseCertificate(caCertBytes)
+	require.NoError(t, err)
+	caCertStd, err := stdx509.ParseCertificate(caCertBytes)
+	require.NoError(t, err)
+
+	leafKey, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	require.NoError(t, err)
+	leafTemplate := stdx509.Certificate{
+		SerialNumber: big.NewInt(2),
+		Subject:      pkix.Name{CommonName: "leaf"},
+		NotBefore:    time.Now().Add(-1 * time.Hour),
+		NotAfter:     time.Now().Add(2 * time.Hour),
+		KeyUsage:     stdx509.KeyUsageDigitalSignature,
+	}
+	leafCertBytes, err := stdx509.CreateCertificate(rand.Reader, &leafTemplate, caCertStd, leafKey.Public(), caKey)
+	require.NoError(t, err)
+	leafCert, err := x509.ParseCertificate(leafCertBytes)
+	require.NoError(t, err)
+
 	localMsp.(*bccspmsp).opts.Roots = x509.NewCertPool()
-	localMsp.(*bccspmsp).opts.Roots.AddCert(cert)
+	localMsp.(*bccspmsp).opts.Roots.AddCert(caCert)
 
 	// Use self signed cert as public key. Convert DER to PEM format
-	pem := pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: cert.Raw})
+	pemBytes := pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: leafCert.Raw})
 
 	// Use wrong formatted private cert
 	keyinfo := &msp.KeyInfo{
 		KeyMaterial:   []byte("wrong encoding"),
 		KeyIdentifier: "MyPrivateKey",
 	}
-	sigid := &msp.SigningIdentityInfo{PublicSigner: pem, PrivateSigner: keyinfo}
-	_, err := localMsp.(*bccspmsp).getSigningIdentityFromConf(sigid)
+	sigid := &msp.SigningIdentityInfo{PublicSigner: pemBytes, PrivateSigner: keyinfo}
+	_, err = localMsp.(*bccspmsp).getSigningIdentityFromConf(sigid)
 	require.EqualError(t, err, "MyPrivateKey: wrong PEM encoding")
 }
 
@@ -331,36 +364,36 @@ func TestValidateCANameConstraintsMitigation(t *testing.T) {
 	leafKey, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
 	require.NoError(t, err)
 
-	caKeyUsage := x509.KeyUsageDigitalSignature | x509.KeyUsageKeyEncipherment | x509.KeyUsageCertSign | x509.KeyUsageCRLSign
-	caTemplate := x509.Certificate{
+	caKeyUsage := stdx509.KeyUsageDigitalSignature | stdx509.KeyUsageKeyEncipherment | stdx509.KeyUsageCertSign | stdx509.KeyUsageCRLSign
+	caTemplate := stdx509.Certificate{
 		Subject:                     pkix.Name{CommonName: "TestCA"},
 		SerialNumber:                big.NewInt(1),
 		NotBefore:                   time.Now().Add(-1 * time.Hour),
 		NotAfter:                    time.Now().Add(2 * time.Hour),
 		ExcludedDNSDomains:          []string{"example.com"},
-		PermittedDNSDomainsCritical: true,
+		PermittedDNSDomainsCritical: false,
 		IsCA:                        true,
 		BasicConstraintsValid:       true,
 		KeyUsage:                    caKeyUsage,
 		SubjectKeyId:                computeSKI(caKey.Public().(*ecdsa.PublicKey)),
 	}
-	caCertBytes, err := x509.CreateCertificate(rand.Reader, &caTemplate, &caTemplate, caKey.Public(), caKey)
+	caCertBytes, err := stdx509.CreateCertificate(rand.Reader, &caTemplate, &caTemplate, caKey.Public(), caKey)
 	require.NoError(t, err)
-	ca, err := x509.ParseCertificate(caCertBytes)
+	caStd, err := stdx509.ParseCertificate(caCertBytes)
 	require.NoError(t, err)
 
-	leafTemplate := x509.Certificate{
+	leafTemplate := stdx509.Certificate{
 		Subject:      pkix.Name{CommonName: "localhost"},
 		SerialNumber: big.NewInt(2),
 		NotBefore:    time.Now().Add(-1 * time.Hour),
 		NotAfter:     time.Now().Add(2 * time.Hour),
-		KeyUsage:     x509.KeyUsageDigitalSignature,
+		KeyUsage:     stdx509.KeyUsageDigitalSignature,
 		SubjectKeyId: computeSKI(leafKey.Public().(*ecdsa.PublicKey)),
 	}
-	leafCertBytes, err := x509.CreateCertificate(rand.Reader, &leafTemplate, ca, leafKey.Public(), caKey)
+	leafCertBytes, err := stdx509.CreateCertificate(rand.Reader, &leafTemplate, caStd, leafKey.Public(), caKey)
 	require.NoError(t, err)
 
-	keyBytes, err := x509.MarshalPKCS8PrivateKey(leafKey)
+	keyBytes, err := stdx509.MarshalPKCS8PrivateKey(leafKey)
 	require.NoError(t, err)
 
 	caCertPem := pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: caCertBytes})
@@ -387,9 +420,9 @@ func TestValidateCANameConstraintsMitigation(t *testing.T) {
 
 		err = verifyLegacyNameConstraints(certs)
 		require.Error(t, err, "certificate chain should trigger legacy constraints")
-		var cie x509.CertificateInvalidError
+		var cie certificateInvalidError
 		require.True(t, errors.As(err, &cie))
-		require.Equal(t, x509.NameConstraintsWithoutSANs, cie.Reason)
+		require.Equal(t, nameConstraintsWithoutSANs, cie.Reason)
 	})
 
 	t.Run("VerifyNameConstraintsWithSAN", func(t *testing.T) {
@@ -399,7 +432,7 @@ func TestValidateCANameConstraintsMitigation(t *testing.T) {
 		leafTemplate := leafTemplate
 		leafTemplate.DNSNames = []string{"localhost"}
 
-		leafCertBytes, err := x509.CreateCertificate(rand.Reader, &leafTemplate, caCert, leafKey.Public(), caKey)
+		leafCertBytes, err := stdx509.CreateCertificate(rand.Reader, &leafTemplate, caStd, leafKey.Public(), caKey)
 		require.NoError(t, err)
 
 		leafCert, err := x509.ParseCertificate(leafCertBytes)
@@ -435,9 +468,9 @@ func TestValidateCANameConstraintsMitigation(t *testing.T) {
 
 		err = testMSP.Setup(mspConfig)
 		require.Error(t, err)
-		var cie x509.CertificateInvalidError
+		var cie certificateInvalidError
 		require.True(t, errors.As(err, &cie))
-		require.Equal(t, x509.NameConstraintsWithoutSANs, cie.Reason)
+		require.Equal(t, nameConstraintsWithoutSANs, cie.Reason)
 	})
 }
 

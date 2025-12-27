@@ -9,18 +9,20 @@ package msp
 import (
 	"crypto"
 	"crypto/rand"
-	"crypto/x509"
 	"encoding/hex"
 	"encoding/pem"
 	"fmt"
 	"sync"
 	"time"
 
+	x509 "github.com/tjfoc/gmsm/x509"
+
 	"github.com/golang/protobuf/proto"
 	"github.com/hyperledger/fabric-protos-go/msp"
 	"github.com/hyperledger/fabric/bccsp"
 	"github.com/hyperledger/fabric/common/flogging"
 	"github.com/pkg/errors"
+	"github.com/tjfoc/gmsm/sm2"
 	"go.uber.org/zap/zapcore"
 )
 
@@ -170,15 +172,20 @@ func NewSerializedIdentity(mspID string, certPEM []byte) ([]byte, error) {
 func (id *identity) Verify(msg []byte, sig []byte) error {
 	// mspIdentityLogger.Infof("Verifying signature")
 
-	// Compute Hash
-	hashOpt, err := id.getHashOpt(id.msp.cryptoConfig.SignatureHashFamily)
-	if err != nil {
-		return errors.WithMessage(err, "failed getting hash function options")
-	}
-
-	digest, err := id.msp.bccsp.Hash(msg, hashOpt)
-	if err != nil {
-		return errors.WithMessage(err, "failed computing digest")
+	// For SM2, the gmsm implementation computes ZA||M and SM3 internally.
+	// Therefore we must pass the raw message to BCCSP.Verify (not a pre-hash).
+	verifyMsg := msg
+	if _, ok := id.cert.PublicKey.(*sm2.PublicKey); !ok {
+		// Compute Hash for non-SM2 keys (ECDSA/RSA)
+		hashOpt, err := id.getHashOpt(id.msp.cryptoConfig.SignatureHashFamily)
+		if err != nil {
+			return errors.WithMessage(err, "failed getting hash function options")
+		}
+		digest, err := id.msp.bccsp.Hash(msg, hashOpt)
+		if err != nil {
+			return errors.WithMessage(err, "failed computing digest")
+		}
+		verifyMsg = digest
 	}
 
 	if mspIdentityLogger.IsEnabledFor(zapcore.DebugLevel) {
@@ -187,7 +194,7 @@ func (id *identity) Verify(msg []byte, sig []byte) error {
 		// mspIdentityLogger.Debugf("Verify: sig = %s", hex.Dump(sig))
 	}
 
-	valid, err := id.msp.bccsp.Verify(id.pk, sig, digest, nil)
+	valid, err := id.msp.bccsp.Verify(id.pk, sig, verifyMsg, nil)
 	if err != nil {
 		return errors.WithMessage(err, "could not determine the validity of the signature")
 	} else if !valid {
@@ -222,6 +229,8 @@ func (id *identity) getHashOpt(hashFamily string) (bccsp.HashOpts, error) {
 		return bccsp.GetHashOpt(bccsp.SHA256)
 	case bccsp.SHA3:
 		return bccsp.GetHashOpt(bccsp.SHA3_256)
+	case bccsp.SM3:
+		return bccsp.GetHashOpt(bccsp.SM3)
 	}
 	return nil, errors.Errorf("hash family not recognized [%s]", hashFamily)
 }
@@ -255,26 +264,21 @@ func newSigningIdentity(cert *x509.Certificate, pk bccsp.Key, signer crypto.Sign
 func (id *signingidentity) Sign(msg []byte) ([]byte, error) {
 	// mspIdentityLogger.Infof("Signing message")
 
-	// Compute Hash
-	hashOpt, err := id.getHashOpt(id.msp.cryptoConfig.SignatureHashFamily)
-	if err != nil {
-		return nil, errors.WithMessage(err, "failed getting hash function options")
+	// For SM2, pass raw message; for others, sign the digest.
+	signMsg := msg
+	if _, ok := id.cert.PublicKey.(*sm2.PublicKey); !ok {
+		hashOpt, err := id.getHashOpt(id.msp.cryptoConfig.SignatureHashFamily)
+		if err != nil {
+			return nil, errors.WithMessage(err, "failed getting hash function options")
+		}
+		digest, err := id.msp.bccsp.Hash(msg, hashOpt)
+		if err != nil {
+			return nil, errors.WithMessage(err, "failed computing digest")
+		}
+		signMsg = digest
+		mspIdentityLogger.Debugf("Sign: digest: %X \n", digest)
 	}
-
-	digest, err := id.msp.bccsp.Hash(msg, hashOpt)
-	if err != nil {
-		return nil, errors.WithMessage(err, "failed computing digest")
-	}
-
-	if len(msg) < 32 {
-		mspIdentityLogger.Debugf("Sign: plaintext: %X \n", msg)
-	} else {
-		mspIdentityLogger.Debugf("Sign: plaintext: %X...%X \n", msg[0:16], msg[len(msg)-16:])
-	}
-	mspIdentityLogger.Debugf("Sign: digest: %X \n", digest)
-
-	// Sign
-	return id.signer.Sign(rand.Reader, digest, nil)
+	return id.signer.Sign(rand.Reader, signMsg, nil)
 }
 
 // GetPublicVersion returns the public version of this identity,

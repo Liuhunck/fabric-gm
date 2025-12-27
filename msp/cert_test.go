@@ -20,7 +20,7 @@ import (
 	"crypto/ecdsa"
 	"crypto/elliptic"
 	"crypto/rand"
-	"crypto/x509"
+	stdx509 "crypto/x509"
 	"crypto/x509/pkix"
 	"encoding/asn1"
 	"math/big"
@@ -31,6 +31,7 @@ import (
 	"github.com/hyperledger/fabric/bccsp/sw"
 	"github.com/hyperledger/fabric/bccsp/utils"
 	"github.com/stretchr/testify/require"
+	x509 "github.com/tjfoc/gmsm/x509"
 )
 
 func TestSanitizeCertWithRSA(t *testing.T) {
@@ -130,11 +131,11 @@ func generateSelfSignedCert(t *testing.T, now time.Time) (*ecdsa.PrivateKey, *x5
 	require.NoError(t, err)
 
 	// Generate a self-signed certificate
-	testExtKeyUsage := []x509.ExtKeyUsage{x509.ExtKeyUsageClientAuth, x509.ExtKeyUsageServerAuth}
+	testExtKeyUsage := []stdx509.ExtKeyUsage{stdx509.ExtKeyUsageClientAuth, stdx509.ExtKeyUsageServerAuth}
 	testUnknownExtKeyUsage := []asn1.ObjectIdentifier{[]int{1, 2, 3}, []int{2, 59, 1}}
 	extraExtensionData := []byte("extra extension")
 	commonName := "test.example.com"
-	template := x509.Certificate{
+	template := stdx509.Certificate{
 		SerialNumber: big.NewInt(1),
 		Subject: pkix.Name{
 			CommonName:   commonName,
@@ -154,9 +155,9 @@ func generateSelfSignedCert(t *testing.T, now time.Time) (*ecdsa.PrivateKey, *x5
 		},
 		NotBefore:             now.Add(-1 * time.Hour),
 		NotAfter:              now.Add(1 * time.Hour),
-		SignatureAlgorithm:    x509.ECDSAWithSHA256,
+		SignatureAlgorithm:    stdx509.ECDSAWithSHA256,
 		SubjectKeyId:          []byte{1, 2, 3, 4},
-		KeyUsage:              x509.KeyUsageCertSign,
+		KeyUsage:              stdx509.KeyUsageCertSign,
 		ExtKeyUsage:           testExtKeyUsage,
 		UnknownExtKeyUsage:    testUnknownExtKeyUsage,
 		BasicConstraintsValid: true,
@@ -176,7 +177,7 @@ func generateSelfSignedCert(t *testing.T, now time.Time) (*ecdsa.PrivateKey, *x5
 			},
 		},
 	}
-	certRaw, err := x509.CreateCertificate(rand.Reader, &template, &template, &k.PublicKey, k)
+	certRaw, err := stdx509.CreateCertificate(rand.Reader, &template, &template, &k.PublicKey, k)
 	require.NoError(t, err)
 
 	cert, err := x509.ParseCertificate(certRaw)

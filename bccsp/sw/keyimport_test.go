@@ -184,17 +184,17 @@ func TestX509PublicKeyImportOptsKeyImporter(t *testing.T) {
 
 	_, err := ki.KeyImport("Hello World", &mocks2.KeyImportOpts{})
 	require.Error(t, err)
-	require.Contains(t, err.Error(), "Invalid raw material. Expected *x509.Certificate.")
+	require.Contains(t, err.Error(), "Invalid raw material. Expected *x509.Certificate or *gmsm/x509.Certificate.")
 
 	_, err = ki.KeyImport(nil, &mocks2.KeyImportOpts{})
 	require.Error(t, err)
-	require.Contains(t, err.Error(), "Invalid raw material. Expected *x509.Certificate.")
+	require.Contains(t, err.Error(), "Invalid raw material. Expected *x509.Certificate or *gmsm/x509.Certificate.")
 
 	cert := &x509.Certificate{}
 	cert.PublicKey = "Hello world"
 	_, err = ki.KeyImport(cert, &mocks2.KeyImportOpts{})
 	require.Error(t, err)
-	require.Contains(t, err.Error(), "Certificate's public key type not recognized. Supported keys: [ECDSA, RSA]")
+	require.Contains(t, err.Error(), "Certificate's public key type not recognized. Supported keys: [ECDSA, SM2, RSA]")
 }
 
 func TestX509RSAKeyImport(t *testing.T) {
