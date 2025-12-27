@@ -16,6 +16,7 @@ import (
 	"github.com/golang/protobuf/proto"
 	"github.com/hyperledger/fabric-protos-go/common"
 	"github.com/hyperledger/fabric-protos-go/msp"
+	gmx509 "github.com/tjfoc/gmsm/x509"
 )
 
 // SignedData is used to represent the general triplet required to verify a signature
@@ -102,9 +103,13 @@ func LogMessageForSerializedIdentity(serializedIdentity []byte) string {
 	}
 	cert, err := x509.ParseCertificate(pemBlock.Bytes)
 	if err != nil {
-		return fmt.Sprintf("Could not parse certificate: %s", err)
+		gmCert, gmErr := gmx509.ParseCertificate(pemBlock.Bytes)
+		if gmErr != nil {
+			return fmt.Sprintf("Could not parse certificate: %s", err)
+		}
+		return fmt.Sprintf("(mspid=%s subject=%s issuer=%s serialnumber=%s)", id.Mspid, gmCert.Subject, gmCert.Issuer, gmCert.SerialNumber.String())
 	}
-	return fmt.Sprintf("(mspid=%s subject=%s issuer=%s serialnumber=%d)", id.Mspid, cert.Subject, cert.Issuer, cert.SerialNumber)
+	return fmt.Sprintf("(mspid=%s subject=%s issuer=%s serialnumber=%s)", id.Mspid, cert.Subject, cert.Issuer, cert.SerialNumber.String())
 }
 
 func LogMessageForSerializedIdentities(signedData []*SignedData) (logMsg string) {

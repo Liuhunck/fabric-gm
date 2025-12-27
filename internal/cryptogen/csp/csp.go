@@ -20,6 +20,9 @@ import (
 	"path/filepath"
 	"strings"
 
+	gmsmSM2 "github.com/tjfoc/gmsm/sm2"
+	gmsmX509 "github.com/tjfoc/gmsm/x509"
+
 	"github.com/pkg/errors"
 )
 
@@ -54,6 +57,37 @@ func LoadPrivateKey(keystorePath string) (*ecdsa.PrivateKey, error) {
 	return priv, err
 }
 
+// LoadPrivateKeySM2 loads a SM2 private key from a file in keystorePath.
+// It looks for a file ending in "_sk" and expects a PEM-encoded PKCS8 private key.
+func LoadPrivateKeySM2(keystorePath string) (*gmsmSM2.PrivateKey, error) {
+	var priv *gmsmSM2.PrivateKey
+
+	walkFunc := func(path string, info os.FileInfo, pathErr error) error {
+		if !strings.HasSuffix(path, "_sk") {
+			return nil
+		}
+
+		rawKey, err := ioutil.ReadFile(path)
+		if err != nil {
+			return err
+		}
+
+		priv, err = parsePrivateKeyPEMSM2(rawKey)
+		if err != nil {
+			return errors.WithMessage(err, path)
+		}
+
+		return nil
+	}
+
+	err := filepath.Walk(keystorePath, walkFunc)
+	if err != nil {
+		return nil, err
+	}
+
+	return priv, err
+}
+
 func parsePrivateKeyPEM(rawKey []byte) (*ecdsa.PrivateKey, error) {
 	block, _ := pem.Decode(rawKey)
 	if block == nil {
@@ -68,6 +102,26 @@ func parsePrivateKeyPEM(rawKey []byte) (*ecdsa.PrivateKey, error) {
 	priv, ok := key.(*ecdsa.PrivateKey)
 	if !ok {
 		return nil, errors.New("pem bytes do not contain an EC private key")
+	}
+	return priv, nil
+}
+
+func parsePrivateKeyPEMSM2(rawKey []byte) (*gmsmSM2.PrivateKey, error) {
+	block, _ := pem.Decode(rawKey)
+	if block == nil {
+		return nil, errors.New("bytes are not PEM encoded")
+	}
+
+	// First try standard library (in case the key is actually ECDSA).
+	if key, err := x509.ParsePKCS8PrivateKey(block.Bytes); err == nil {
+		if priv, ok := key.(*gmsmSM2.PrivateKey); ok {
+			return priv, nil
+		}
+	}
+
+	priv, err := gmsmX509.ParsePKCS8UnecryptedPrivateKey(block.Bytes)
+	if err != nil {
+		return nil, errors.WithMessage(err, "pem bytes are not SM2 PKCS8 encoded")
 	}
 	return priv, nil
 }
@@ -94,6 +148,31 @@ func GeneratePrivateKey(keystorePath string) (*ecdsa.PrivateKey, error) {
 	}
 
 	return priv, err
+}
+
+// GeneratePrivateKeySM2 creates a SM2 private key and stores it in keystorePath
+// using a PEM-encoded PKCS8 structure. The output filename matches Fabric's
+// convention (priv_sk) so existing loaders keep working.
+func GeneratePrivateKeySM2(keystorePath string) (*gmsmSM2.PrivateKey, error) {
+	priv, err := gmsmSM2.GenerateKey(rand.Reader)
+	if err != nil {
+		return nil, errors.WithMessage(err, "failed to generate SM2 private key")
+	}
+
+	pkcs8Encoded, err := gmsmX509.MarshalSm2UnecryptedPrivateKey(priv)
+	if err != nil {
+		return nil, errors.WithMessage(err, "failed to marshal SM2 private key")
+	}
+
+	pemEncoded := pem.EncodeToMemory(&pem.Block{Type: "PRIVATE KEY", Bytes: pkcs8Encoded})
+
+	keyFile := filepath.Join(keystorePath, "priv_sk")
+	err = ioutil.WriteFile(keyFile, pemEncoded, 0o600)
+	if err != nil {
+		return nil, errors.WithMessagef(err, "failed to save private key to file %s", keyFile)
+	}
+
+	return priv, nil
 }
 
 /*

@@ -20,6 +20,7 @@ import (
 	"sync"
 
 	"github.com/hyperledger/fabric/bccsp"
+	"github.com/tjfoc/gmsm/sm2"
 )
 
 // NewFileBasedKeyStore instantiated a file-based key store at a given position.
@@ -142,6 +143,8 @@ func (ks *fileBasedKeyStore) GetKey(ski []byte) (bccsp.Key, error) {
 		switch k := key.(type) {
 		case *ecdsa.PrivateKey:
 			return &ecdsaPrivateKey{k}, nil
+		case *sm2.PrivateKey:
+			return &sm2PrivateKey{privKey: k}, nil
 		default:
 			return nil, errors.New("secret key type not recognized")
 		}
@@ -155,6 +158,8 @@ func (ks *fileBasedKeyStore) GetKey(ski []byte) (bccsp.Key, error) {
 		switch k := key.(type) {
 		case *ecdsa.PublicKey:
 			return &ecdsaPublicKey{k}, nil
+		case *sm2.PublicKey:
+			return &sm2PublicKey{pubKey: k}, nil
 		default:
 			return nil, errors.New("public key type not recognized")
 		}
@@ -223,6 +228,8 @@ func (ks *fileBasedKeyStore) searchKeystoreForSKI(ski []byte) (k bccsp.Key, err 
 		switch kk := key.(type) {
 		case *ecdsa.PrivateKey:
 			k = &ecdsaPrivateKey{kk}
+		case *sm2.PrivateKey:
+			k = &sm2PrivateKey{privKey: kk}
 		default:
 			continue
 		}

@@ -13,6 +13,7 @@ import (
 	"errors"
 	"fmt"
 	"reflect"
+	"strings"
 
 	"github.com/hyperledger/fabric/bccsp"
 	"github.com/tjfoc/gmsm/sm2"
@@ -179,6 +180,15 @@ func (ki *x509PublicKeyImportOptsKeyImporter) KeyImport(raw interface{}, opts bc
 
 	switch pk := pk.(type) {
 	case *ecdsa.PublicKey:
+		// Some SM2 certificate parsing paths may return *ecdsa.PublicKey with the SM2 curve.
+		// Treat these as SM2 keys to avoid routing them through ECDSA low-S checks.
+		if pk != nil && pk.Curve != nil && pk.Curve.Params() != nil {
+			curveName := pk.Curve.Params().Name
+			if strings.EqualFold(curveName, "SM2-P-256") || strings.Contains(strings.ToUpper(curveName), "SM2") {
+				sm2PK := &sm2.PublicKey{Curve: pk.Curve, X: pk.X, Y: pk.Y}
+				return &sm2PublicKey{pubKey: sm2PK}, nil
+			}
+		}
 		return ki.bccsp.KeyImporters[reflect.TypeOf(&bccsp.ECDSAGoPublicKeyImportOpts{})].KeyImport(
 			pk,
 			&bccsp.ECDSAGoPublicKeyImportOpts{Temporary: opts.Ephemeral()})

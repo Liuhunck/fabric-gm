@@ -8,10 +8,12 @@ package msp
 
 import (
 	"crypto"
+	"crypto/ecdsa"
 	"crypto/rand"
 	"encoding/hex"
 	"encoding/pem"
 	"fmt"
+	"strings"
 	"sync"
 	"time"
 
@@ -25,6 +27,21 @@ import (
 	"github.com/tjfoc/gmsm/sm2"
 	"go.uber.org/zap/zapcore"
 )
+
+func isSM2PublicKey(pub interface{}) bool {
+	switch pk := pub.(type) {
+	case *sm2.PublicKey:
+		return true
+	case *ecdsa.PublicKey:
+		if pk == nil || pk.Curve == nil || pk.Curve.Params() == nil {
+			return false
+		}
+		curveName := pk.Curve.Params().Name
+		return strings.EqualFold(curveName, "SM2-P-256") || strings.Contains(strings.ToUpper(curveName), "SM2")
+	default:
+		return false
+	}
+}
 
 var mspIdentityLogger = flogging.MustGetLogger("msp.identity")
 
@@ -175,7 +192,7 @@ func (id *identity) Verify(msg []byte, sig []byte) error {
 	// For SM2, the gmsm implementation computes ZA||M and SM3 internally.
 	// Therefore we must pass the raw message to BCCSP.Verify (not a pre-hash).
 	verifyMsg := msg
-	if _, ok := id.cert.PublicKey.(*sm2.PublicKey); !ok {
+	if !isSM2PublicKey(id.cert.PublicKey) {
 		// Compute Hash for non-SM2 keys (ECDSA/RSA)
 		hashOpt, err := id.getHashOpt(id.msp.cryptoConfig.SignatureHashFamily)
 		if err != nil {
@@ -266,7 +283,7 @@ func (id *signingidentity) Sign(msg []byte) ([]byte, error) {
 
 	// For SM2, pass raw message; for others, sign the digest.
 	signMsg := msg
-	if _, ok := id.cert.PublicKey.(*sm2.PublicKey); !ok {
+	if !isSM2PublicKey(id.cert.PublicKey) {
 		hashOpt, err := id.getHashOpt(id.msp.cryptoConfig.SignatureHashFamily)
 		if err != nil {
 			return nil, errors.WithMessage(err, "failed getting hash function options")

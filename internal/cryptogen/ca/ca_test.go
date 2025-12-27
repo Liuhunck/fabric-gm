@@ -65,7 +65,7 @@ func TestLoadCertificateECDSA(t *testing.T) {
 	)
 	require.NoError(t, err, "Error generating CA")
 
-	cert, err := rootCA.SignCertificate(
+	certDER, err := rootCA.SignCertificate(
 		certDir,
 		testName3,
 		nil,
@@ -75,6 +75,8 @@ func TestLoadCertificateECDSA(t *testing.T) {
 		[]x509.ExtKeyUsage{x509.ExtKeyUsageAny},
 	)
 	require.NoError(t, err, "Failed to generate signed certificate")
+	cert, err := x509.ParseCertificate(certDER)
+	require.NoError(t, err)
 	// KeyUsage should be x509.KeyUsageDigitalSignature | x509.KeyUsageKeyEncipherment
 	require.Equal(t, x509.KeyUsageDigitalSignature|x509.KeyUsageKeyEncipherment,
 		cert.KeyUsage)
@@ -192,7 +194,7 @@ func TestGenerateSignCertificate(t *testing.T) {
 	)
 	require.NoError(t, err, "Error generating CA")
 
-	cert, err := rootCA.SignCertificate(
+	certDER, err := rootCA.SignCertificate(
 		certDir,
 		testName,
 		nil,
@@ -202,12 +204,14 @@ func TestGenerateSignCertificate(t *testing.T) {
 		[]x509.ExtKeyUsage{x509.ExtKeyUsageAny},
 	)
 	require.NoError(t, err, "Failed to generate signed certificate")
+	cert, err := x509.ParseCertificate(certDER)
+	require.NoError(t, err)
 	// KeyUsage should be x509.KeyUsageDigitalSignature | x509.KeyUsageKeyEncipherment
 	require.Equal(t, x509.KeyUsageDigitalSignature|x509.KeyUsageKeyEncipherment,
 		cert.KeyUsage)
 	require.Contains(t, cert.ExtKeyUsage, x509.ExtKeyUsageAny)
 
-	cert, err = rootCA.SignCertificate(
+	certDER, err = rootCA.SignCertificate(
 		certDir,
 		testName,
 		nil,
@@ -217,20 +221,26 @@ func TestGenerateSignCertificate(t *testing.T) {
 		[]x509.ExtKeyUsage{},
 	)
 	require.NoError(t, err, "Failed to generate signed certificate")
+	cert, err = x509.ParseCertificate(certDER)
+	require.NoError(t, err)
 	require.Equal(t, 0, len(cert.ExtKeyUsage))
 
 	// make sure ous are correctly set
 	ous := []string{"TestOU", "PeerOU"}
-	cert, err = rootCA.SignCertificate(certDir, testName, ous, nil, &priv.PublicKey,
+	certDER, err = rootCA.SignCertificate(certDir, testName, ous, nil, &priv.PublicKey,
 		x509.KeyUsageDigitalSignature, []x509.ExtKeyUsage{})
+	require.NoError(t, err)
+	cert, err = x509.ParseCertificate(certDER)
 	require.NoError(t, err)
 	require.Contains(t, cert.Subject.OrganizationalUnit, ous[0])
 	require.Contains(t, cert.Subject.OrganizationalUnit, ous[1])
 
 	// make sure sans are correctly set
 	sans := []string{testName2, testName3, testIP}
-	cert, err = rootCA.SignCertificate(certDir, testName, nil, sans, &priv.PublicKey,
+	certDER, err = rootCA.SignCertificate(certDir, testName, nil, sans, &priv.PublicKey,
 		x509.KeyUsageDigitalSignature, []x509.ExtKeyUsage{})
+	require.NoError(t, err)
+	cert, err = x509.ParseCertificate(certDER)
 	require.NoError(t, err)
 	require.Contains(t, cert.DNSNames, testName2)
 	require.Contains(t, cert.DNSNames, testName3)
