@@ -65,6 +65,9 @@ const (
 
 	// SM3 Chinese National Hash Algorithm
 	SM3 = "SM3"
+
+	// SM4 Chinese National Block Cipher Algorithm (symmetric encryption).
+	SM4 = "SM4"
 )
 
 // SM2KeyGenOpts contains options for SM2 key generation.

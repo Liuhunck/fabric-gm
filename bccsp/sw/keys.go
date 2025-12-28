@@ -20,6 +20,11 @@ import (
 	gmx509 "github.com/tjfoc/gmsm/x509"
 )
 
+const (
+	pemTypeAES = "AES PRIVATE KEY"
+	pemTypeSM4 = "SM4 PRIVATE KEY"
+)
+
 type pkcs8Info struct {
 	Version             int
 	PrivateKeyAlgorithm []asn1.ObjectIdentifier
@@ -263,7 +268,7 @@ func pemToAES(raw []byte, pwd []byte) ([]byte, error) {
 }
 
 func aesToPEM(raw []byte) []byte {
-	return pem.EncodeToMemory(&pem.Block{Type: "AES PRIVATE KEY", Bytes: raw})
+	return pem.EncodeToMemory(&pem.Block{Type: pemTypeAES, Bytes: raw})
 }
 
 func aesToEncryptedPEM(raw []byte, pwd []byte) ([]byte, error) {
@@ -276,7 +281,7 @@ func aesToEncryptedPEM(raw []byte, pwd []byte) ([]byte, error) {
 
 	block, err := stdx509.EncryptPEMBlock(
 		rand.Reader,
-		"AES PRIVATE KEY",
+		pemTypeAES,
 		raw,
 		pwd,
 		stdx509.PEMCipherAES256)
@@ -285,6 +290,65 @@ func aesToEncryptedPEM(raw []byte, pwd []byte) ([]byte, error) {
 	}
 
 	return pem.EncodeToMemory(block), nil
+}
+
+func sm4ToPEM(raw []byte) []byte {
+	return pem.EncodeToMemory(&pem.Block{Type: pemTypeSM4, Bytes: raw})
+}
+
+func sm4ToEncryptedPEM(raw []byte, pwd []byte) ([]byte, error) {
+	if len(raw) == 0 {
+		return nil, errors.New("invalid sm4 key. It must be different from nil")
+	}
+	if len(pwd) == 0 {
+		return sm4ToPEM(raw), nil
+	}
+
+	block, err := stdx509.EncryptPEMBlock(
+		rand.Reader,
+		pemTypeSM4,
+		raw,
+		pwd,
+		stdx509.PEMCipherAES256)
+	if err != nil {
+		return nil, err
+	}
+
+	return pem.EncodeToMemory(block), nil
+}
+
+func pemToSymmetricKey(raw []byte, pwd []byte) (string, []byte, error) {
+	if len(raw) == 0 {
+		return "", nil, errors.New("invalid PEM. It must be different from nil")
+	}
+	block, _ := pem.Decode(raw)
+	if block == nil {
+		return "", nil, fmt.Errorf("failed decoding PEM. Block must be different from nil [% x]", raw)
+	}
+
+	if stdx509.IsEncryptedPEMBlock(block) {
+		if len(pwd) == 0 {
+			return "", nil, errors.New("encrypted Key. Password must be different fom nil")
+		}
+		decrypted, err := stdx509.DecryptPEMBlock(block, pwd)
+		if err != nil {
+			return "", nil, fmt.Errorf("failed PEM decryption: [%s]", err)
+		}
+		return block.Type, decrypted, nil
+	}
+
+	return block.Type, block.Bytes, nil
+}
+
+func pemToSM4(raw []byte, pwd []byte) ([]byte, error) {
+	typ, key, err := pemToSymmetricKey(raw, pwd)
+	if err != nil {
+		return nil, err
+	}
+	if typ != pemTypeSM4 {
+		return nil, fmt.Errorf("unexpected PEM type [%s]", typ)
+	}
+	return key, nil
 }
 
 func publicKeyToPEM(publicKey interface{}, pwd []byte) ([]byte, error) {

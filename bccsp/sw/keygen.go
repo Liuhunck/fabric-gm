@@ -61,3 +61,14 @@ func (*sm2KeyGenerator) KeyGen(opts bccsp.KeyGenOpts) (bccsp.Key, error) {
 	}
 	return &sm2PrivateKey{privKey: privKey}, nil
 }
+
+type sm4KeyGenerator struct{}
+
+func (*sm4KeyGenerator) KeyGen(opts bccsp.KeyGenOpts) (bccsp.Key, error) {
+	lowLevelKey, err := GetRandomBytes(16)
+	if err != nil {
+		return nil, fmt.Errorf("Failed generating SM4 key [%s]", err)
+	}
+
+	return &sm4PrivateKey{privKey: lowLevelKey, exportable: false}, nil
+}

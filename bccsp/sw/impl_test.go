@@ -1056,6 +1056,35 @@ func TestAESKeyGen(t *testing.T) {
 	}
 }
 
+func TestSM4KeyGen(t *testing.T) {
+	t.Parallel()
+	provider, _, cleanup := currentTestConfig.Provider(t)
+	defer cleanup()
+
+	k, err := provider.KeyGen(&bccsp.SM4KeyGenOpts{Temporary: false})
+	if err != nil {
+		t.Fatalf("Failed generating SM4 key [%s]", err)
+	}
+	if k == nil {
+		t.Fatal("Failed generating SM4 key. Key must be different from nil")
+	}
+	if !k.Private() {
+		t.Fatal("Failed generating SM4 key. Key should be private")
+	}
+	if !k.Symmetric() {
+		t.Fatal("Failed generating SM4 key. Key should be symmetric")
+	}
+
+	// Ensure it can be retrieved from the keystore
+	k2, err := provider.GetKey(k.SKI())
+	if err != nil {
+		t.Fatalf("Failed getting SM4 key by SKI [%s]", err)
+	}
+	if k2 == nil {
+		t.Fatal("Failed getting SM4 key by SKI. Key must be different from nil")
+	}
+}
+
 func TestAESEncrypt(t *testing.T) {
 	t.Parallel()
 	provider, _, cleanup := currentTestConfig.Provider(t)
@@ -1067,6 +1096,25 @@ func TestAESEncrypt(t *testing.T) {
 	}
 
 	ct, err := provider.Encrypt(k, []byte("Hello World"), &bccsp.AESCBCPKCS7ModeOpts{})
+	if err != nil {
+		t.Fatalf("Failed encrypting [%s]", err)
+	}
+	if len(ct) == 0 {
+		t.Fatal("Failed encrypting. Nil ciphertext")
+	}
+}
+
+func TestSM4Encrypt(t *testing.T) {
+	t.Parallel()
+	provider, _, cleanup := currentTestConfig.Provider(t)
+	defer cleanup()
+
+	k, err := provider.KeyGen(&bccsp.SM4KeyGenOpts{Temporary: false})
+	if err != nil {
+		t.Fatalf("Failed generating SM4 key [%s]", err)
+	}
+
+	ct, err := provider.Encrypt(k, []byte("Hello World"), &bccsp.SM4CBCPKCS7ModeOpts{})
 	if err != nil {
 		t.Fatalf("Failed encrypting [%s]", err)
 	}
@@ -1097,6 +1145,36 @@ func TestAESDecrypt(t *testing.T) {
 		t.Fatalf("Failed decrypting [%s]", err)
 	}
 	if len(ct) == 0 {
+		t.Fatal("Failed decrypting. Nil plaintext")
+	}
+
+	if !bytes.Equal(msg, pt) {
+		t.Fatalf("Failed decrypting. Decrypted plaintext is different from the original. [%x][%x]", msg, pt)
+	}
+}
+
+func TestSM4Decrypt(t *testing.T) {
+	t.Parallel()
+	provider, _, cleanup := currentTestConfig.Provider(t)
+	defer cleanup()
+
+	k, err := provider.KeyGen(&bccsp.SM4KeyGenOpts{Temporary: false})
+	if err != nil {
+		t.Fatalf("Failed generating SM4 key [%s]", err)
+	}
+
+	msg := []byte("Hello World")
+
+	ct, err := provider.Encrypt(k, msg, &bccsp.SM4CBCPKCS7ModeOpts{})
+	if err != nil {
+		t.Fatalf("Failed encrypting [%s]", err)
+	}
+
+	pt, err := provider.Decrypt(k, ct, bccsp.SM4CBCPKCS7ModeOpts{})
+	if err != nil {
+		t.Fatalf("Failed decrypting [%s]", err)
+	}
+	if len(pt) == 0 {
 		t.Fatal("Failed decrypting. Nil plaintext")
 	}
 

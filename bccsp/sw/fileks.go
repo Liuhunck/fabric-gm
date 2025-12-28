@@ -127,12 +127,19 @@ func (ks *fileBasedKeyStore) GetKey(ski []byte) (bccsp.Key, error) {
 	switch suffix {
 	case "key":
 		// Load the key
-		key, err := ks.loadKey(hex.EncodeToString(ski))
+		keyType, key, err := ks.loadKey(hex.EncodeToString(ski))
 		if err != nil {
 			return nil, fmt.Errorf("failed loading key [%x] [%s]", ski, err)
 		}
 
-		return &aesPrivateKey{key, false}, nil
+		switch keyType {
+		case pemTypeAES:
+			return &aesPrivateKey{key, false}, nil
+		case pemTypeSM4:
+			return &sm4PrivateKey{privKey: key, exportable: false}, nil
+		default:
+			return nil, fmt.Errorf("symmetric key type not recognized [%s]", keyType)
+		}
 	case "sk":
 		// Load the private key
 		key, err := ks.loadPrivateKey(hex.EncodeToString(ski))
@@ -192,9 +199,15 @@ func (ks *fileBasedKeyStore) StoreKey(k bccsp.Key) (err error) {
 		}
 
 	case *aesPrivateKey:
-		err = ks.storeKey(hex.EncodeToString(k.SKI()), kk.privKey)
+		err = ks.storeKey(hex.EncodeToString(k.SKI()), pemTypeAES, kk.privKey)
 		if err != nil {
 			return fmt.Errorf("failed storing AES key [%s]", err)
+		}
+
+	case *sm4PrivateKey:
+		err = ks.storeKey(hex.EncodeToString(k.SKI()), pemTypeSM4, kk.privKey)
+		if err != nil {
+			return fmt.Errorf("failed storing SM4 key [%s]", err)
 		}
 
 	default:
@@ -294,14 +307,24 @@ func (ks *fileBasedKeyStore) storePublicKey(alias string, publicKey interface{})
 	return nil
 }
 
-func (ks *fileBasedKeyStore) storeKey(alias string, key []byte) error {
-	pem, err := aesToEncryptedPEM(key, ks.pwd)
+func (ks *fileBasedKeyStore) storeKey(alias string, keyType string, key []byte) error {
+	var pemBytes []byte
+	var err error
+
+	switch keyType {
+	case pemTypeAES:
+		pemBytes, err = aesToEncryptedPEM(key, ks.pwd)
+	case pemTypeSM4:
+		pemBytes, err = sm4ToEncryptedPEM(key, ks.pwd)
+	default:
+		return fmt.Errorf("unsupported symmetric key type [%s]", keyType)
+	}
 	if err != nil {
 		logger.Errorf("Failed converting key to PEM [%s]: [%s]", alias, err)
 		return err
 	}
 
-	err = ioutil.WriteFile(ks.getPathForAlias(alias, "key"), pem, 0o600)
+	err = ioutil.WriteFile(ks.getPathForAlias(alias, "key"), pemBytes, 0o600)
 	if err != nil {
 		logger.Errorf("Failed storing key [%s]: [%s]", alias, err)
 		return err
@@ -352,7 +375,7 @@ func (ks *fileBasedKeyStore) loadPublicKey(alias string) (interface{}, error) {
 	return privateKey, nil
 }
 
-func (ks *fileBasedKeyStore) loadKey(alias string) ([]byte, error) {
+func (ks *fileBasedKeyStore) loadKey(alias string) (string, []byte, error) {
 	path := ks.getPathForAlias(alias, "key")
 	logger.Debugf("Loading key [%s] at [%s]...", alias, path)
 
@@ -360,17 +383,21 @@ func (ks *fileBasedKeyStore) loadKey(alias string) ([]byte, error) {
 	if err != nil {
 		logger.Errorf("Failed loading key [%s]: [%s].", alias, err.Error())
 
-		return nil, err
+		return "", nil, err
 	}
 
-	key, err := pemToAES(pem, ks.pwd)
+	keyType, key, err := pemToSymmetricKey(pem, ks.pwd)
 	if err != nil {
 		logger.Errorf("Failed parsing key [%s]: [%s]", alias, err)
-
-		return nil, err
+		return "", nil, err
 	}
 
-	return key, nil
+	switch keyType {
+	case pemTypeAES, pemTypeSM4:
+		return keyType, key, nil
+	default:
+		return "", nil, fmt.Errorf("symmetric key type not recognized [%s]", keyType)
+	}
 }
 
 func (ks *fileBasedKeyStore) createKeyStore() error {
