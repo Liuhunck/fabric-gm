@@ -495,6 +495,7 @@ github.com/tedsuo/ifrit/grouper
 ## explicit; go 1.14
 github.com/tjfoc/gmsm/sm2
 github.com/tjfoc/gmsm/sm3
+github.com/tjfoc/gmsm/sm4
 github.com/tjfoc/gmsm/x509
 # go.etcd.io/etcd/client/pkg/v3 v3.5.14
 ## explicit; go 1.21
