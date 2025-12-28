@@ -7,13 +7,14 @@ SPDX-License-Identifier: Apache-2.0
 package protoutil_test
 
 import (
-	"crypto/sha256"
 	"encoding/asn1"
 	"math"
 	"testing"
 
 	"github.com/golang/protobuf/proto"
 	cb "github.com/hyperledger/fabric-protos-go/common"
+	"github.com/hyperledger/fabric/bccsp"
+	"github.com/hyperledger/fabric/bccsp/factory"
 	configtxtest "github.com/hyperledger/fabric/common/configtx/test"
 	"github.com/hyperledger/fabric/protoutil"
 	"github.com/stretchr/testify/require"
@@ -45,10 +46,11 @@ func TestNewBlock(t *testing.T) {
 		DataHash:     protoutil.BlockDataHash(data),
 		PreviousHash: []byte("datahash"),
 	})
-	headerHash := sha256.Sum256(asn1Bytes)
+	require.NoError(t, err)
+	expectedHeaderHash, err := factory.GetDefault().Hash(asn1Bytes, &bccsp.SHAOpts{})
 	require.NoError(t, err)
 	require.Equal(t, asn1Bytes, protoutil.BlockHeaderBytes(block.Header), "Incorrect marshaled blockheader bytes")
-	require.Equal(t, headerHash[:], protoutil.BlockHeaderHash(block.Header), "Incorrect blockheader hash")
+	require.Equal(t, expectedHeaderHash, protoutil.BlockHeaderHash(block.Header), "Incorrect blockheader hash")
 }
 
 func TestGoodBlockHeaderBytes(t *testing.T) {

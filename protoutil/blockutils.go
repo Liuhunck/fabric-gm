@@ -8,7 +8,6 @@ package protoutil
 
 import (
 	"bytes"
-	"crypto/sha256"
 	"encoding/asn1"
 	"encoding/base64"
 	"fmt"
@@ -16,6 +15,8 @@ import (
 
 	"github.com/golang/protobuf/proto"
 	cb "github.com/hyperledger/fabric-protos-go/common"
+	"github.com/hyperledger/fabric/bccsp"
+	"github.com/hyperledger/fabric/bccsp/factory"
 	"github.com/pkg/errors"
 )
 
@@ -60,13 +61,20 @@ func BlockHeaderBytes(b *cb.BlockHeader) []byte {
 }
 
 func BlockHeaderHash(b *cb.BlockHeader) []byte {
-	sum := sha256.Sum256(BlockHeaderBytes(b))
-	return sum[:]
+	hash, err := factory.GetDefault().Hash(BlockHeaderBytes(b), &bccsp.SHAOpts{})
+	if err != nil {
+		panic(fmt.Errorf("Failed computing block header hash on [% x]", BlockHeaderBytes(b)))
+	}
+	return hash
 }
 
 func BlockDataHash(b *cb.BlockData) []byte {
-	sum := sha256.Sum256(bytes.Join(b.Data, nil))
-	return sum[:]
+	joined := bytes.Join(b.Data, nil)
+	hash, err := factory.GetDefault().Hash(joined, &bccsp.SHAOpts{})
+	if err != nil {
+		panic(fmt.Errorf("Failed computing block data hash on [% x]", joined))
+	}
+	return hash
 }
 
 // GetChannelIDFromBlockBytes returns channel ID given byte array which represents
